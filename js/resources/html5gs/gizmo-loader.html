@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8">
+	</head>
+	<body class="gizmo-container">
+	</body>
+
+	<script>
+
+		var ALLOWED_ORIGIN = ['http://10.214.8.135:50122','https://www.explorelearning.com', 'https://dev.explorelearning.com', 'https://test-www.explorelearning.com'];
+		var gConfigBase;
+		var releaseVersion;
+		var gID;
+
+		var savedParentOrigin;
+
+		function receiveMessage(event){
+
+			var data = event.data;
+			var messageName = data.messageName;
+
+			switch(messageName){
+				case 'loadGizmo':
+					savedParentOrigin = event.origin;
+					loadGizmo(data.gizmoID, data.releaseVersion, data.basePath);
+					break;
+				case 'get':
+					try {
+						returnGetterData(data.parentOrigin, data.source);
+					}
+					catch (e) {
+						var message = {messageName : 'errorReported', contents : e.message}
+						parent.window.postMessage(message, data.parentOrigin);
+						returnEmptyGetterData(data.parentOrigin, data.source);
+					}
+					break;
+				case 'set':
+					var returnValue = getterSetter.set(data.contents);
+					break;
+				case 'reset':
+					getterSetter.resetGizmo();
+					break;
+				case 'cameraList':
+					returnCameraList(data.parentOrigin);
+					break;
+				case 'cameraCapture':
+					cameraCapture(data.parentOrigin, data.contents);
+					break;
+				default:
+					window.console.log('Unknown message passed to Gizmo Loader.')
+					break;
+			}
+		}
+
+		window.addEventListener('message', receiveMessage, false);
+
+		function cameraCapture(parentOrigin, cameraID){
+
+			var callbackFn = function(imageData){
+				var message = {messageName : 'cameraData', contents : imageData}
+				parent.window.postMessage(message, parentOrigin);
+			}
+
+			getterSetter.cameraCapture(cameraID, callbackFn);
+		}
+
+		function returnCameraList(parentOrigin){
+			var cameraList = getterSetter.cameraList();
+			var message = {messageName : 'cameraList', contents : cameraList}
+			parent.window.postMessage(message, parentOrigin);
+		}
+
+		// For when errors occur during a 'get' operation
+		function returnEmptyGetterData(parentOrigin, source){
+			var emptyGetterData = {"success" : false, "message" : "An error occurred while trying to get the Gizmo state.  No data was returned"};
+			var message = {messageName : 'getterData', contents : emptyGetterData, source: source};
+			parent.window.postMessage(message, parentOrigin);
+		}
+
+		function returnGetterData(parentOrigin, source){
+			var getterData = getterSetter.get('object');
+			var message = {messageName : 'getterData', contents : getterData, source: source};
+			parent.window.postMessage(message, parentOrigin);
+		}
+
+		function loadGizmo(gizmoID, rVersion, basePath){
+
+			gConfigBase = basePath + "/resources/html5gs/" + rVersion + "/";
+			releaseVersion = rVersion;
+			gID = gizmoID;
+
+			// The Require.js library, necessary for loading all of the Gizmo pieces
+			var requireSRC = basePath + "/js/vendor/require.js";
+
+			// Gizmo configuration file - contains paths and call to Gizmo initialize function
+			var gizmoConfig = basePath + "/js/gizmo-config.js";
+
+			// Import.js - contains an array with Gizmo specific libraries
+			var importSRC = basePath + "/resources/html5gs/" + rVersion + "/" + gizmoID + '/js/import.js';
+
+			var configScript = document.createElement('script');
+			configScript.src = gizmoConfig;
+
+			var requireScript = document.createElement('script');
+			requireScript.src = requireSRC;
+			requireScript.onload = function(){
+				document.head.appendChild(configScript);
+			}
+
+			var importScript = document.createElement('script');
+			importScript.src = importSRC;
+			importScript.onload = function(){
+				document.head.appendChild(requireScript);
+			}
+
+			document.head.appendChild(importScript);
+
+			// In the old version scripts were written using document write.
+			// The \x3c needed because otherwise this script block gets closed and causes errors. 
+			// document.write('\x3cscript type="text/javascript" src="'+importSRC+'">\x3c/script>');
+			// document.write('\x3cscript type="text/javascript" src="'+requireSRC+'">\x3c/script>');
+			// document.write('\x3cscript type="text/javascript" src="'+gizmoConfig+'">\x3c/script>');
+		}
+
+		window.onerror = function(messageOrEvent, source, lineno, colno, error){
+			var errorString = error + "  (line "+lineno+", source: "+source+")";
+			var message = {messageName : 'errorReported', contents : errorString}
+			parent.window.postMessage(message, savedParentOrigin);
+		}
+
+
+	</script> 
+
+</html>
